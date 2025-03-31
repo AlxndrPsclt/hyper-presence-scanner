@@ -14,7 +14,7 @@ const char* serverUrl = "http://192.168.8.130:5000/message"; // Your server URL
 const char* scannerId = "ESP32C3_01";
 
 // MQTT Broker
-const char *mqtt_broker = "192.168.8.146";
+const char *mqtt_broker = "192.168.8.110";
 const char *topic = "emqx/esp32";
 //const char *mqtt_username = "emqx";
 //const char *mqtt_password = "public";
@@ -37,7 +37,7 @@ void setup() {
     Serial.println("Connected to WiFi\n");
 
     client.setServer(mqtt_broker, mqtt_port);
-        while (!client.connected()) {
+    while (!client.connected()) {
         String client_id = "esp32-scanner-";
         client_id += String(WiFi.macAddress());
         Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
@@ -60,13 +60,13 @@ void setup() {
     pBLEScan->setWindow(99);
 }
 
-void sendDataToServer(const char *macAddress, int rssi) {
+void sendDataToServer(String macAddress, int rssi) {
     if (WiFi.status() == WL_CONNECTED) {
         //const char *mac = macAddress;
 
-        //String jsonData = "{\"mac_address\": \"" + macAddress + "\", \"rssi\": " + String(rssi) + ", \"scanner_id\": \""+ String(scannerId)+ "\" }";
+        String jsonData = "{\"mac_address\": \"" + macAddress + "\", \"rssi\": " + String(rssi) + ", \"scanner_id\": \""+ String(scannerId)+ "\" }";
         //client.publish(topic, jsonData);
-        client.publish("mac_address", macAddress);
+        client.publish("mac_address", jsonData.c_str());
     } else {
         Serial.println("WiFi not connected");
     }
@@ -74,17 +74,17 @@ void sendDataToServer(const char *macAddress, int rssi) {
 
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-        const char *macAddress = advertisedDevice.getAddress().toString().c_str();
+        String macAddress = advertisedDevice.getAddress().toString().c_str();
         int rssi = advertisedDevice.getRSSI();
         Serial.print("iBeacon found: ");
         Serial.print(macAddress);
         Serial.print(" RSSI: ");
         Serial.println(rssi);
-        sendDataToServer(macAddress, rssi);
 
         // Send the data to the server
-        //if (macAddress=="58:cf:79:f1:b3:ea" || macAddress=="68:67:25:ee:16:32" || macAddress=="68:67:25:ee:bb:ee" || macAddress=="db:eb:04:b9:b8:bb") {
-        //}
+        if (macAddress=="84:fc:e6:84:25:b6" || macAddress=="68:67:25:ee:16:32") {
+            sendDataToServer(macAddress, rssi);
+        }
     }
 };
 
