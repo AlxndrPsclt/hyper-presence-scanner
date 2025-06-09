@@ -14,8 +14,8 @@ const char* serverUrl = "http://192.168.8.130:5000/message"; // Your server URL
 const char* scannerId = "ESP32C3_01";
 
 // MQTT Broker
-const char *mqtt_broker = "192.168.8.110";
-const char *topic = "emqx/esp32";
+const char *mqtt_broker = "192.168.8.120";
+const char *topic = "beacons";
 //const char *mqtt_username = "emqx";
 //const char *mqtt_password = "public";
 const int mqtt_port = 1883;
@@ -66,7 +66,7 @@ void sendDataToServer(String macAddress, int rssi) {
 
         String jsonData = "{\"mac_address\": \"" + macAddress + "\", \"rssi\": " + String(rssi) + ", \"scanner_id\": \""+ String(scannerId)+ "\" }";
         //client.publish(topic, jsonData);
-        client.publish("mac_address", jsonData.c_str());
+        client.publish(topic, jsonData.c_str());
     } else {
         Serial.println("WiFi not connected");
     }
@@ -82,7 +82,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
         Serial.println(rssi);
 
         // Send the data to the server
-        if (macAddress=="84:fc:e6:84:25:b6" || macAddress=="68:67:25:ee:16:32") {
+        if (macAddress=="84:fc:e6:84:25:b6" || macAddress=="14:3f:a6:ae:d9:49") {
             sendDataToServer(macAddress, rssi);
         }
     }
