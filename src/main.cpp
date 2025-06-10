@@ -1,97 +1,116 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <BLEDevice.h>
-#include <BLEScan.h>
-#include <BLEAdvertisedDevice.h>
-#include <PubSubClient.h>
+#include "SPIFFS.h"
+#include <NimBLEDevice.h>
 
-const char* ssid = "HUAWEI_B818_F5F9";        // Your WiFi SSID
-const char* password = "L50MB7E438J"; // Your WiFi Password
-//const char* ssid = "AlexHotspot";        // Your WiFi SSID
-//const char* password = "aqut6350"; // Your WiFi Password
-const char* serverUrl = "http://192.168.8.130:5000/message"; // Your server URL
-const char* scannerId = "ESP32C3_01";
+// --- Filter MACs (in lowercase)
+const char* allowedMacs[] = {
+  "68:67:25:EE:BB:EC",
+  "68:67:25:EE:BB:EE",
+  "68:67:25:ee:bb:ec",
+  "68:67:25:ee:bb:ee"
+};
+const size_t allowedMacsCount = sizeof(allowedMacs) / sizeof(allowedMacs[0]);
 
-// MQTT Broker
-const char *mqtt_broker = "192.168.8.120";
-const char *topic = "beacons";
-//const char *mqtt_username = "emqx";
-//const char *mqtt_password = "public";
-const int mqtt_port = 1883;
+bool isMacAllowed(const String& mac) {
+  for (size_t i = 0; i < allowedMacsCount; ++i) {
+    if (mac.equalsIgnoreCase(allowedMacs[i])) return true;
+  }
+  return false;
+}
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+void scanAndLog() {
+  Serial.println("Starting scan...");
+  NimBLEScan* scanner = NimBLEDevice::getScan();
+  Serial.println("Scanner ready...");
 
-BLEScan* pBLEScan;
+  scanner->clearResults();  // Clean up previous results
+  scanner->start(3, false); // Scan for 3 seconds (blocking)
+
+  Serial.println("Scan over.");
+  NimBLEScanResults results = scanner->getResults();
+
+  for (int i = 0; i < results.getCount(); ++i) {
+    Serial.println("Found result");
+    const NimBLEAdvertisedDevice* device = results.getDevice(i);  // Get pointer
+    String mac = device->getAddress().toString().c_str();
+    Serial.println(mac);
+
+    if (isMacAllowed(mac)) {
+      int rssi = device->getRSSI();
+      unsigned long timestamp = millis() / 1000;
+
+      char line[128];
+      snprintf(line, sizeof(line), "%lu %s %d\n", timestamp, mac.c_str(), rssi);
+
+      File f = SPIFFS.open("/ble_log.txt", FILE_APPEND);
+      if (f) {
+        f.print(line);
+        f.close();
+        Serial.print("Logged: ");
+        Serial.print(line);
+      } else {
+        Serial.println("Failed to write to SPIFFS");
+      }
+    }
+  }
+
+  scanner->clearResults(); // Free memory
+}
+
+void checkSerialCommand() {
+  static String input;
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      input.trim();
+      Serial.println(input);
+      if (input == "dump") {
+        Serial.println("Dumping...");
+        Serial.println("----------");
+        File f = SPIFFS.open("/ble_log.txt");
+        if (f) {
+          while (f.available()) {
+            Serial.write(f.read());
+          }
+          f.close();
+          Serial.println("----------");
+          Serial.println("Dump ended");
+        } else {
+          Serial.println("No log file found.");
+        }
+      } else if (input == "clear") {
+        SPIFFS.remove("/ble_log.txt");
+        Serial.println("Log cleared.");
+      } else {
+        Serial.println("Unknown command.");
+      }
+      input = "";
+    } else {
+      input += c;
+    }
+  }
+}
 
 void setup() {
-    Serial.begin(115200);
+  Serial.begin(115200);
+  delay(500);
 
-    // Connect to WiFi
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.println("Connecting to WiFi...\n");
-    }
-    Serial.println("Connected to WiFi\n");
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS mount failed.");
+    return;
+  }
 
-    client.setServer(mqtt_broker, mqtt_port);
-    while (!client.connected()) {
-        String client_id = "esp32-scanner-";
-        client_id += String(WiFi.macAddress());
-        Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
-        //if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
-        if (client.connect(client_id.c_str())) {
-            Serial.println("Public EMQX MQTT broker connected\n");
-        } else {
-            Serial.print("failed with state ");
-            Serial.print(client.state());
-            Serial.print("\n");
-            delay(2000);
-        }
-    }
+  NimBLEDevice::init("");
+  NimBLEScan* scanner = NimBLEDevice::getScan();
+  scanner->setActiveScan(true);
+  scanner->setInterval(45);
+  scanner->setWindow(15);
 
-    // Initialize BLE
-    BLEDevice::init("");
-    pBLEScan = BLEDevice::getScan();
-    pBLEScan->setActiveScan(true); // Active scan to get more detailed data
-    pBLEScan->setInterval(100);
-    pBLEScan->setWindow(99);
+  Serial.println("BLE beacon scanner running. Type 'dump' or 'clear' via serial.");
 }
-
-void sendDataToServer(String macAddress, int rssi) {
-    if (WiFi.status() == WL_CONNECTED) {
-        //const char *mac = macAddress;
-
-        String jsonData = "{\"mac_address\": \"" + macAddress + "\", \"rssi\": " + String(rssi) + ", \"scanner_id\": \""+ String(scannerId)+ "\" }";
-        //client.publish(topic, jsonData);
-        client.publish(topic, jsonData.c_str());
-    } else {
-        Serial.println("WiFi not connected");
-    }
-}
-
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-    void onResult(BLEAdvertisedDevice advertisedDevice) {
-        String macAddress = advertisedDevice.getAddress().toString().c_str();
-        int rssi = advertisedDevice.getRSSI();
-        Serial.print("iBeacon found: ");
-        Serial.print(macAddress);
-        Serial.print(" RSSI: ");
-        Serial.println(rssi);
-
-        // Send the data to the server
-        if (macAddress=="84:fc:e6:84:25:b6" || macAddress=="14:3f:a6:ae:d9:49") {
-            sendDataToServer(macAddress, rssi);
-        }
-    }
-};
 
 void loop() {
-    // Scan for BLE devices
-    pBLEScan->start(5, false);  // Scan for 5 seconds
-    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(), true);
-    pBLEScan->stop();
-    delay(5000);  // Delay between scans
+  scanAndLog();
+  checkSerialCommand();
+  delay(10000);  // slight delay between scans
 }
