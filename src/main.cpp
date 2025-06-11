@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include "SPIFFS.h"
-#include <NimBLEDevice.h>
+#include <BLEDevice.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
 
 // --- Filter MACs (in lowercase)
 const char* allowedMacs[] = {
@@ -10,6 +12,7 @@ const char* allowedMacs[] = {
   "68:67:25:ee:bb:ee"
 };
 const size_t allowedMacsCount = sizeof(allowedMacs) / sizeof(allowedMacs[0]);
+bool verbose = false;
 
 bool isMacAllowed(const String& mac) {
   for (size_t i = 0; i < allowedMacsCount; ++i) {
@@ -18,38 +21,48 @@ bool isMacAllowed(const String& mac) {
   return false;
 }
 
+void serialPrint(String msg) {
+  if (verbose) {
+      Serial.println(msg);
+  }
+}
+
 void scanAndLog() {
-  Serial.println("Starting scan...");
-  NimBLEScan* scanner = NimBLEDevice::getScan();
-  Serial.println("Scanner ready...");
+  serialPrint("Starting scan...");
 
+  BLEScan* scanner = BLEDevice::getScan();
   scanner->clearResults();  // Clean up previous results
-  scanner->start(3, false); // Scan for 3 seconds (blocking)
+  scanner->setAdvertisedDeviceCallbacks(nullptr);  // no callbacks
+  scanner->setActiveScan(true);  // important: requests scan responses
+  scanner->setInterval(100);
+  scanner->setWindow(99);  // make scan window close to interval
+  //scanner->start(3, false);
+  BLEScanResults results = scanner->start(3, false); // Scan 3s, blocking
 
-  Serial.println("Scan over.");
-  NimBLEScanResults results = scanner->getResults();
+  serialPrint("Scan over.");
 
   for (int i = 0; i < results.getCount(); ++i) {
-    Serial.println("Found result");
-    const NimBLEAdvertisedDevice* device = results.getDevice(i);  // Get pointer
-    String mac = device->getAddress().toString().c_str();
-    Serial.println(mac);
+    BLEAdvertisedDevice device = results.getDevice(i);
+    //String mac = String(device.getAddress().toString());
+    std::string stdMac = device.getAddress().toString();
+    String mac = String(stdMac.c_str());  // Explicit conversion
+    serialPrint(mac);
 
     if (isMacAllowed(mac)) {
-      int rssi = device->getRSSI();
+      int rssi = device.getRSSI();
       unsigned long timestamp = millis() / 1000;
 
       char line[128];
-      snprintf(line, sizeof(line), "%lu %s %d\n", timestamp, mac.c_str(), rssi);
+      snprintf(line, sizeof(line), "%lu,%s,%d", timestamp, mac.c_str(), rssi);
 
-      File f = SPIFFS.open("/ble_log.txt", FILE_APPEND);
+      File f = SPIFFS.open("/ble_log.csv", FILE_APPEND);
       if (f) {
-        f.print(line);
+        f.println(line);
         f.close();
-        Serial.print("Logged: ");
-        Serial.print(line);
+        Serial.println("Logged: ");
+        Serial.println(line);
       } else {
-        Serial.println("Failed to write to SPIFFS");
+        serialPrint("Failed to write to SPIFFS");
       }
     }
   }
@@ -63,11 +76,11 @@ void checkSerialCommand() {
     char c = Serial.read();
     if (c == '\n' || c == '\r') {
       input.trim();
-      Serial.println(input);
+      serialPrint(input);
       if (input == "dump") {
         Serial.println("Dumping...");
         Serial.println("----------");
-        File f = SPIFFS.open("/ble_log.txt");
+        File f = SPIFFS.open("/ble_log.csv");
         if (f) {
           while (f.available()) {
             Serial.write(f.read());
@@ -76,13 +89,16 @@ void checkSerialCommand() {
           Serial.println("----------");
           Serial.println("Dump ended");
         } else {
-          Serial.println("No log file found.");
+          serialPrint("No log file found.");
         }
       } else if (input == "clear") {
-        SPIFFS.remove("/ble_log.txt");
+        SPIFFS.remove("/ble_log.csv");
         Serial.println("Log cleared.");
+      } else if (input == "verbose") {
+        verbose = not(verbose);
+        serialPrint("Verbosity changed.");
       } else {
-        Serial.println("Unknown command.");
+        serialPrint("Unknown command.");
       }
       input = "";
     } else {
@@ -100,17 +116,14 @@ void setup() {
     return;
   }
 
-  NimBLEDevice::init("");
-  NimBLEScan* scanner = NimBLEDevice::getScan();
-  scanner->setActiveScan(true);
-  scanner->setInterval(45);
-  scanner->setWindow(15);
+  BLEDevice::init(""); // Use empty device name for passive scan
 
   Serial.println("BLE beacon scanner running. Type 'dump' or 'clear' via serial.");
 }
 
 void loop() {
+  serialPrint("Loop start");
   scanAndLog();
   checkSerialCommand();
-  delay(10000);  // slight delay between scans
+  delay(1000);  // slight delay between scans
 }
