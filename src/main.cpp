@@ -5,11 +5,18 @@
 #include <BLEAdvertisedDevice.h>
 
 // --- Filter MACs (in lowercase)
+//const char* allowedMacs[] = {
+//  "68:67:25:ee:bb:ec",
+//  "68:67:25:ee:bb:ee",
+//  "64:e8:33:b6:29:ac",
+//  "64:e8:33:b6:29:ae",
+//  "84:fc:e6:84:12:da",
+//  "64:e8:33:b6:b3:38",
+//  "64:e8:33:b6:b3:3a"
+//};
 const char* allowedMacs[] = {
-  "68:67:25:EE:BB:EC",
-  "68:67:25:EE:BB:EE",
-  "68:67:25:ee:bb:ec",
-  "68:67:25:ee:bb:ee"
+  "64:e8:33:b6:29:ae",
+  "64:e8:33:b6:b3:3a",
 };
 const size_t allowedMacsCount = sizeof(allowedMacs) / sizeof(allowedMacs[0]);
 bool verbose = false;
