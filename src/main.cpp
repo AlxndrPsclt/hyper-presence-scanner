@@ -16,7 +16,16 @@
 //};
 const char* allowedMacs[] = {
   "64:e8:33:b6:29:ae",
+  "64:e8:33:b6:b3:ea",
+  "64:e8:33:b5:96:a2",
+  "64:e8:33:b7:19:5e",
+  "64:e8:33:b6:bb:9a",
+  "64:e8:33:b5:bf:ee",
+  "64:e8:33:b6:b4:0e",
+  "64:e8:33:b6:29:ae",
   "64:e8:33:b6:b3:3a",
+  "b0:81:84:03:73:c2",
+  "84:fc:e6:84:12:da"
 };
 const size_t allowedMacsCount = sizeof(allowedMacs) / sizeof(allowedMacs[0]);
 bool verbose = false;
